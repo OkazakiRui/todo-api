@@ -1,39 +1,33 @@
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use std::sync::Mutex;
 
-#[get("/hello")]
-async fn hello() -> impl Responder {
-    HttpResponse::Ok().body("hello actix!!")
-}
-
-#[post("/echo")]
-async fn echo(body: String) -> impl Responder {
-    HttpResponse::Ok().body(body)
-}
-
-async fn manual_hello() -> impl Responder {
-    HttpResponse::Ok().body("Hey there!")
-}
+use actix_web::{web, App, HttpServer};
 
 struct AppState {
-    app_name: String,
+    counter: Mutex<i32>,
 }
-#[get("/")]
 async fn index(data: web::Data<AppState>) -> String {
-    let app_name = &data.app_name;
-    format!("Hello! {}!", app_name)
+    let counter = data.counter.lock().expect("lock failed");
+
+    format!("current number: {counter}")
+}
+async fn increment(data: web::Data<AppState>) -> String {
+    let mut counter = data.counter.lock().expect("lock failed");
+    *counter += 1;
+
+    format!("increment after number: {counter}")
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
+    let counter = web::Data::new(AppState {
+        counter: Mutex::new(0),
+    });
+
+    HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppState {
-                app_name: String::from("app name"),
-            }))
-            .service(hello)
-            .service(echo)
-            .service(index)
-            .route("/manual", web::get().to(manual_hello))
+            .app_data(counter.clone())
+            .route("/", web::get().to(index))
+            .route("/increment", web::get().to(increment))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
